@@ -26,28 +26,7 @@ import (
 )
 
 // VendorID is the USB VendorID assigned to Elgato (0x0fd9)
-const VendorID = 4057
-
-// NumButtons is the total amount of Buttons located on the Stream Deck.
-const NumButtons = 15
-
-// ButtonSize is the size of a button (in pixel).
-const ButtonSize = 80
-
-// NumButtonColumns is the number of columns on the Stream Deck.
-const NumButtonColumns = 5
-
-// NumButtonRows is the number of button rows on the Stream Deck.
-const NumButtonRows = 3
-
-// Spacer is the spacing distance (in pixel) of two buttons on the Stream Deck.
-const Spacer = 19
-
-// PanelWidth is the total screen width of the Stream Deck (including spacers).
-const PanelWidth = NumButtonColumns*ButtonSize + Spacer*(NumButtonColumns-1)
-
-// PanelHeight is the total screen height of the stream deck (including spacers).
-const PanelHeight = NumButtonRows*ButtonSize + Spacer*(NumButtonRows-1)
+const VendorID = 0x0fd9
 
 // BtnEvent is a callback which gets executed when the state of a button changes,
 // so whenever it gets pressed or released.
@@ -170,7 +149,7 @@ func NewStreamDeck(serial ...string) (*StreamDeck, error) {
 
 	sd := &StreamDeck{
 		device:   handle,
-		btnState: make([]BtnState, NumButtons),
+		btnState: make([]BtnState, sdinfo.NumButtons),
 		info:     sdinfo,
 	}
 
@@ -274,7 +253,7 @@ func (sd *StreamDeck) FillColor(btnIndex, r, g, b int) error {
 		return err
 	}
 
-	img := image.NewRGBA(image.Rect(0, 0, ButtonSize, ButtonSize))
+	img := image.NewRGBA(image.Rect(0, 0, sd.info.ButtonSize, sd.info.ButtonSize))
 	color := color.RGBA{uint8(r), uint8(g), uint8(b), 0}
 	draw.Draw(img, img.Bounds(), image.NewUniform(color), image.Point{0, 0}, draw.Src)
 
@@ -390,30 +369,30 @@ func (sd *StreamDeck) FillPanel(img image.Image) error {
 
 	// resize if the picture width is larger or smaller than panel
 	rect := img.Bounds()
-	if rect.Dx() != PanelWidth {
-		newWidthRatio := float32(rect.Dx()) / float32((PanelWidth))
-		img = resize(img, PanelWidth, int(float32(rect.Dy())/newWidthRatio))
+	if rect.Dx() != sd.info.PanelWidth() {
+		newWidthRatio := float32(rect.Dx()) / float32((sd.info.PanelWidth()))
+		img = resize(img, sd.info.PanelWidth(), int(float32(rect.Dy())/newWidthRatio))
 	}
 
 	// if the Canvas is larger than PanelWidth x PanelHeight then we crop
 	// the Center match PanelWidth x PanelHeight
 	rect = img.Bounds()
-	if rect.Dx() > PanelWidth || rect.Dy() > PanelHeight {
-		img = cropCenter(img, PanelWidth, PanelHeight)
+	if rect.Dx() > sd.info.PanelWidth() || rect.Dy() > sd.info.PanelHeight() {
+		img = cropCenter(img, sd.info.PanelWidth(), sd.info.PanelHeight())
 	}
 
 	counter := 0
 
-	for row := 0; row < NumButtonRows; row++ {
-		for col := 0; col < NumButtonColumns; col++ {
+	for row := 0; row < sd.info.NumButtonRows; row++ {
+		for col := 0; col < sd.info.NumButtonColumns; col++ {
 			rect := image.Rectangle{
 				Min: image.Point{
-					PanelWidth - ButtonSize - col*ButtonSize - col*Spacer,
-					row*ButtonSize + row*Spacer,
+					sd.info.PanelWidth() - sd.info.ButtonSize - col*sd.info.ButtonSize - col*sd.info.Spacer,
+					row*sd.info.ButtonSize + row*sd.info.Spacer,
 				},
 				Max: image.Point{
-					PanelWidth - 1 - col*ButtonSize - col*Spacer,
-					ButtonSize - 1 + row*ButtonSize + row*Spacer,
+					sd.info.PanelWidth() - 1 - col*sd.info.ButtonSize - col*sd.info.Spacer,
+					sd.info.ButtonSize - 1 + row*sd.info.ButtonSize + row*sd.info.Spacer,
 				},
 			}
 			sd.FillImage(counter, img.(*image.RGBA).SubImage(rect))
@@ -448,7 +427,7 @@ func (sd *StreamDeck) WriteText(btnIndex int, textBtn TextButton) error {
 		return err
 	}
 
-	img := image.NewRGBA(image.Rect(0, 0, ButtonSize, ButtonSize))
+	img := image.NewRGBA(image.Rect(0, 0, sd.info.ButtonSize, sd.info.ButtonSize))
 	bg := image.NewUniform(textBtn.BgColor)
 	// fill button with Background color
 	draw.Draw(img, img.Bounds(), bg, image.Point{0, 0}, draw.Src)
