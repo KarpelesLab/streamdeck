@@ -3,7 +3,7 @@ package label
 import (
 	"image/color"
 
-	sd "github.com/dh1tw/streamdeck"
+	sd "github.com/KarpelesLab/streamdeck"
 )
 
 // Text is a functional option for providing the initial text on the label.

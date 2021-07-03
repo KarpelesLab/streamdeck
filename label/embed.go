@@ -18,7 +18,7 @@ var MPlus1mMediumFont *truetype.Font
 func init() {
 	var err error
 
-	MPlus1mMedium, err = freetype.ParseFont(MPlus1mMedium)
+	MPlus1mMediumFont, err = freetype.ParseFont(MPlus1mMedium)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -452,6 +452,10 @@ func (sd *StreamDeck) WriteText(btnIndex int, textBtn TextButton) error {
 	return nil
 }
 
+func (sd *StreamDeck) ButtonSize() int {
+	return sd.info.ButtonSize
+}
+
 func (sd *StreamDeck) Reset() error {
 	payload := make([]byte, 17)
 	payload[0] = 0x0b

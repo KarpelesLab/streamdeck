@@ -54,7 +54,7 @@ func (l *Label) Change(state sd.BtnState) {
 
 // Draw renders the Label on the designated Button.
 func (l *Label) Draw() error {
-	img := image.NewRGBA(image.Rect(0, 0, sd.ButtonSize, sd.ButtonSize))
+	img := image.NewRGBA(image.Rect(0, 0, l.streamDeck.ButtonSize(), l.streamDeck.ButtonSize()))
 	l.addBgColor(l.bgColor, img)
 	if err := l.addText(l.text, img); err != nil {
 		return err
@@ -140,7 +140,7 @@ func (l *Label) addText(text string, img *image.RGBA) error {
 	// create Context
 	c := freetype.NewContext()
 	c.SetDPI(72)
-	c.SetFont(MPlus1mMedium)
+	c.SetFont(MPlus1mMediumFont)
 	c.SetFontSize(p.fontSize)
 	c.SetClip(img.Bounds())
 	c.SetDst(img)
