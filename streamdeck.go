@@ -3,16 +3,20 @@
 package StreamDeck
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/disintegration/gift"
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
 
-	"github.com/dh1tw/hid"
+	"github.com/KarpelesLab/hid"
 
 	"image/color"
 	"image/draw"
@@ -26,6 +30,7 @@ const VendorID = 4057
 
 // ProductID is the USB ProductID assigned to Elgato's Stream Deck (0x0060)
 const ProductID = 96
+const StreamDeck6 = 99
 
 // NumButtons is the total amount of Buttons located on the Stream Deck.
 const NumButtons = 15
@@ -39,7 +44,7 @@ const numFirstMsgPixels = 2583
 const numSecondMsgPixels = 2601
 
 // ButtonSize is the size of a button (in pixel).
-const ButtonSize = 72
+const ButtonSize = 80
 
 // NumButtonColumns is the number of columns on the Stream Deck.
 const NumButtonColumns = 5
@@ -77,9 +82,10 @@ type ReadErrorCb func(err error)
 // StreamDeck is the object representing the Elgato Stream Deck.
 type StreamDeck struct {
 	sync.Mutex
-	device     *hid.Device
+	device     hid.Device
 	btnEventCb BtnEvent
 	btnState   []BtnState
+	product    uint16
 }
 
 // TextButton holds the lines to be written to a button and the desired
@@ -114,39 +120,59 @@ type Page interface {
 // a small program which enumerates all available Stream Decks. If no serial number
 // is supplied, the first StreamDeck found will be selected.
 func NewStreamDeck(serial ...string) (*StreamDeck, error) {
+	log.Printf("about to enumerate devices")
 
 	if len(serial) > 1 {
 		return nil, fmt.Errorf("only <= 1 serial numbers must be provided")
 	}
 
-	devices := hid.Enumerate(VendorID, ProductID)
+	var devices []hid.Device
+	hid.UsbWalk(func(device hid.Device) {
+		info := device.Info()
+		if info.Vendor != VendorID {
+			return
+		}
+		switch info.Product {
+		case ProductID:
+			devices = append(devices, device)
+		case StreamDeck6:
+			devices = append(devices, device)
+		default:
+			log.Printf("WARNING: unsupported Elgato device %04x:%04x:%04x:%02x", info.Vendor, info.Product, info.Revision, info.Interface)
+		}
+	})
 
 	if len(devices) == 0 {
 		return nil, fmt.Errorf("no stream deck device found")
 	}
 
 	id := 0
-	if len(serial) == 1 {
-		found := false
-		for i, d := range devices {
-			if d.Serial == serial[0] {
-				id = i
-				found = true
+	/*
+		if len(serial) == 1 {
+			found := false
+			for i, d := range devices {
+				info := d.Info()
+				if info.Serial == serial[0] {
+					id = i
+					found = true
+				}
 			}
-		}
-		if !found {
-			return nil, fmt.Errorf("no stream deck device found with serial number %s", serial[0])
-		}
-	}
+			if !found {
+				return nil, fmt.Errorf("no stream deck device found with serial number %s", serial[0])
+			}
+		}*/
 
-	device, err := devices[id].Open()
+	err := devices[id].Open()
 	if err != nil {
 		return nil, err
 	}
 
+	info := devices[id].Info()
+
 	sd := &StreamDeck{
-		device:   device,
+		device:   devices[id],
 		btnState: make([]BtnState, NumButtons),
+		product:  info.Product,
 	}
 
 	// initialize buttons to state BtnReleased
@@ -154,6 +180,11 @@ func NewStreamDeck(serial ...string) (*StreamDeck, error) {
 		sd.btnState[i] = BtnReleased
 	}
 
+	err = sd.Reset()
+	if err != nil {
+		return nil, err
+	}
+	sd.SetBrightness(100)
 	sd.ClearAllBtns()
 
 	go sd.read()
@@ -172,12 +203,10 @@ func (sd *StreamDeck) SetBtnEventCb(ev BtnEvent) {
 // Read will listen in a for loop for incoming messages from the Stream Deck.
 // It is typically executed in a dedicated go routine.
 func (sd *StreamDeck) read() {
-
 	for {
-		data := make([]byte, 16)
-		_, err := sd.device.Read(data)
+		data, err := sd.device.ReadInputPacket(time.Second)
 		if err != nil {
-			fmt.Println(err)
+			continue
 		}
 
 		data = data[1:] // strip off the first byte; usage unknown, but it is always '\x01'
@@ -207,6 +236,7 @@ func (sd *StreamDeck) Close() error {
 
 // ClearBtn fills a particular key with the color black
 func (sd *StreamDeck) ClearBtn(btnIndex int) error {
+	log.Printf("about to clear button %d", btnIndex)
 
 	if err := checkValidKeyIndex(btnIndex); err != nil {
 		return err
@@ -216,8 +246,19 @@ func (sd *StreamDeck) ClearBtn(btnIndex int) error {
 
 // ClearAllBtns fills all keys with the color black
 func (sd *StreamDeck) ClearAllBtns() {
-	for i := 14; i >= 0; i-- {
+	for i := sd.ButtonCount() - 1; i >= 0; i-- {
 		sd.ClearBtn(i)
+	}
+}
+
+func (sd *StreamDeck) ButtonCount() int {
+	switch sd.product {
+	case ProductID:
+		return 15
+	case StreamDeck6:
+		return 6
+	default:
+		panic("unrecognized device")
 	}
 }
 
@@ -241,38 +282,57 @@ func (sd *StreamDeck) FillColor(btnIndex, r, g, b int) error {
 	return sd.FillImage(btnIndex, img)
 }
 
+func makeBitmap(img image.Image) []byte {
+	width := img.Bounds().Dx()
+	height := img.Bounds().Dy()
+	pixelSize := width * height * 3
+	fileSize := pixelSize + 54 // header is 54 bytes long
+	out := &bytes.Buffer{}
+
+	out.Write([]byte{'B', 'M'})
+	binary.Write(out, binary.LittleEndian, uint32(fileSize))
+	out.Write([]byte{0, 0, 0, 0})                      // reserved
+	binary.Write(out, binary.LittleEndian, uint32(54)) // starting offset of pixels (header size)
+
+	// BITMAPINFOHEADER
+	binary.Write(out, binary.LittleEndian, uint32(40)) // DIB header size
+	binary.Write(out, binary.LittleEndian, uint32(width))
+	binary.Write(out, binary.LittleEndian, uint32(height))
+	binary.Write(out, binary.LittleEndian, uint16(1))  // The number of color planes, must be 1
+	binary.Write(out, binary.LittleEndian, uint16(24)) // the number of bits per pixels
+	binary.Write(out, binary.LittleEndian, uint32(0))  // compression method (BI_RGB)
+	binary.Write(out, binary.LittleEndian, uint32(pixelSize))
+	binary.Write(out, binary.LittleEndian, int32(3780)) // the horizontal resolution of the image. (pixel per metre, signed integer)
+	binary.Write(out, binary.LittleEndian, int32(3780)) // the vertical resolution of the image. (pixel per metre, signed integer)
+	binary.Write(out, binary.LittleEndian, uint32(0))   // the number of colors in the color palette (meaningless in RGB mode)
+	binary.Write(out, binary.LittleEndian, uint32(0))   // the number of important colors used (generally ignored)
+
+	// write pixels
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			out.Write([]byte{byte(r), byte(b), byte(g)}) // oh yea because bitmap stores RBG, not RGB. Would have been too easy
+		}
+	}
+
+	// end
+	return out.Bytes()
+}
+
 // FillImage fills the given key with an image. For best performance, provide
-// the image in the size of 72x72 pixels. Otherwise it will be automatically
+// the image in the size of ?x? pixels. Otherwise it will be automatically
 // resized.
 func (sd *StreamDeck) FillImage(btnIndex int, img image.Image) error {
 	if err := checkValidKeyIndex(btnIndex); err != nil {
 		return err
 	}
 
-	// if necessary, rescale the picture
-	rect := img.Bounds()
-	if rect.Dx() != ButtonSize {
-		img = resize(img, ButtonSize, ButtonSize)
-	}
-
-	imgBuf := make([]byte, 0, ButtonSize*ButtonSize*3)
-
-	for row := 0; row < ButtonSize; row++ {
-		for line := ButtonSize - 1; line >= 0; line-- {
-			r, g, b, _ := img.At(line, row).RGBA()
-			imgBuf = append(imgBuf, byte(r), byte(b), byte(g))
-		}
-	}
-
-	page1 := imgBuf[0 : numFirstMsgPixels*3]
-	page2 := imgBuf[numFirstMsgPixels*3:]
+	imgBuf := makeBitmap(img)
 
 	sd.Lock()
-	sd.writeMsg1(btnIndex, page1)
-	sd.writeMsg2(btnIndex, page2)
-	sd.Unlock()
+	defer sd.Unlock()
 
-	return nil
+	return sd.writeBitmap(uint8(btnIndex), imgBuf)
 }
 
 // FillImageFromFile fills the given key with an image from a file.
@@ -380,24 +440,60 @@ func (sd *StreamDeck) WriteText(btnIndex int, textBtn TextButton) error {
 	return nil
 }
 
-// writeMsg1 writes the first part of a button's content to the stream deck.
-func (sd *StreamDeck) writeMsg1(btnIndex int, c []byte) {
-	prefix := []byte{'\x02', '\x01', '\x01', '\x00', '\x00', byte(btnIndex + 1), '\x00', '\x00', '\x00', '\x00',
-		'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x42', '\x4D', '\xF6', '\x3C', '\x00', '\x00', '\x00',
-		'\x00', '\x00', '\x00', '\x36', '\x00', '\x00', '\x00', '\x28', '\x00', '\x00', '\x00', '\x48', '\x00',
-		'\x00', '\x00', '\x48', '\x00', '\x00', '\x00', '\x01', '\x00', '\x18', '\x00', '\x00', '\x00', '\x00',
-		'\x00', '\xC0', '\x3C', '\x00', '\x00', '\xC4', '\x0E', '\x00', '\x00', '\xC4', '\x0E', '\x00', '\x00',
-		'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'}
-	merged := append(prefix, c...)
-	sd.device.Write(merged)
+func (sd *StreamDeck) Reset() error {
+	payload := make([]byte, 17)
+	payload[0] = 0x0b
+	payload[1] = 0x63
+
+	return sd.device.SetFeatureReport(0, payload)
 }
 
-// writeMsg2 writes the second part of a button's content to the stream deck.
-func (sd *StreamDeck) writeMsg2(btnIndex int, c []byte) {
-	prefix := []byte{'\x02', '\x01', '\x02', '\x00', '\x01', byte(btnIndex + 1), '\x00', '\x00', '\x00', '\x00',
-		'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'}
-	merged := append(prefix, c...)
-	sd.device.Write(merged)
+func (sd *StreamDeck) SetBrightness(pc uint8) error {
+	payload := make([]byte, 17)
+	payload[0] = 0x05
+	payload[1] = 0x55
+	payload[2] = 0xaa
+	payload[3] = 0xd1
+	payload[4] = 0x01
+	payload[5] = pc
+
+	return sd.device.SetFeatureReport(0, payload)
+}
+
+func (sd *StreamDeck) writeBitmap(key uint8, buf []byte) error {
+	// write buf through interrupt, limit to 1024 bytes each time
+	out := make([]byte, 1024)
+	out[0] = 0x02
+	out[1] = 0x01
+	out[5] = key
+
+	page_no := uint8(0)
+
+	log.Printf("about to write %d bytes of data...", len(buf))
+
+	for {
+		out[2] = page_no
+		page_no += 1
+		copy(out[16:], buf)
+
+		if len(buf) <= (len(out) - 16) {
+			out[4] = 1 // eof
+			buf = nil
+		} else {
+			buf = buf[len(out)-16:]
+		}
+
+		_, err := sd.device.Write(out, time.Second)
+		//err := sd.device.SetReport(0x0202, out)
+		if err != nil {
+			panic(fmt.Sprintf("failed to setreport: %s", err))
+		}
+		log.Printf("wrote %d bytes, remaining %d", len(out), len(buf))
+
+		if len(buf) == 0 {
+			return nil
+		}
+	}
 }
 
 // resize returns a resized copy of the supplied image with the given width and height.
