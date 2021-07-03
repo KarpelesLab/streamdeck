@@ -335,6 +335,12 @@ func (sd *StreamDeck) FillImage(btnIndex int, img image.Image) error {
 		return err
 	}
 
+	// if necessary, rescale the picture
+	rect := img.Bounds()
+	if rect.Dx() != sd.Info.ButtonSize {
+		img = resize(img, sd.Info.ButtonSize, sd.Info.ButtonSize)
+	}
+
 	imgBuf := makeBitmap(img, 270)
 
 	sd.Lock()
