@@ -111,7 +111,7 @@ func (btn *LedButton) Change(state sd.BtnState) {
 // Draw renders the Button
 func (btn *LedButton) Draw() error {
 
-	img := image.NewRGBA(image.Rect(0, 0, btn.streamDeck.ButtonSize(), btn.streamDeck.ButtonSize()))
+	img := image.NewRGBA(image.Rect(0, 0, btn.streamDeck.Info.ButtonSize, btn.streamDeck.Info.ButtonSize))
 	btn.addLED(btn.ledColor, img)
 	if err := btn.addText(btn.text, img); err != nil {
 		return err
