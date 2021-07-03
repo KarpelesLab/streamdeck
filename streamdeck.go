@@ -289,9 +289,19 @@ func (sd *StreamDeck) FillColor(btnIndex, r, g, b int) error {
 	return sd.FillImage(btnIndex, img)
 }
 
-func makeBitmap(img image.Image) []byte {
+func makeBitmap(img image.Image, rotate int) []byte {
+	for rotate < 0 {
+		rotate += 360
+	}
+
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
+
+	switch rotate {
+	case 90, 270:
+		width, height = height, width
+	}
+
 	pixelSize := width * height * 3
 	fileSize := pixelSize + 54 // header is 54 bytes long
 	out := &bytes.Buffer{}
@@ -315,10 +325,34 @@ func makeBitmap(img image.Image) []byte {
 	binary.Write(out, binary.LittleEndian, uint32(0))   // the number of important colors used (generally ignored)
 
 	// write pixels
-	for y := 0; y < height; y++ {
+	switch rotate {
+	case 0:
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				r, g, b, _ := img.At(x, y).RGBA()
+				out.Write([]byte{byte(b), byte(g), byte(r)})
+			}
+		}
+	case 90:
 		for x := 0; x < width; x++ {
-			r, g, b, _ := img.At(x, y).RGBA()
-			out.Write([]byte{byte(r), byte(b), byte(g)}) // oh yea because bitmap stores RBG, not RGB. Would have been too easy
+			for y := 0; y < height; y++ {
+				r, g, b, _ := img.At(x, height-y-1).RGBA()
+				out.Write([]byte{byte(b), byte(g), byte(r)})
+			}
+		}
+	case 180:
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				r, g, b, _ := img.At(width-x-1, height-y-1).RGBA()
+				out.Write([]byte{byte(b), byte(g), byte(r)})
+			}
+		}
+	case 270:
+		for x := 0; x < width; x++ {
+			for y := 0; y < height; y++ {
+				r, g, b, _ := img.At(width-x-1, y).RGBA()
+				out.Write([]byte{byte(b), byte(g), byte(r)})
+			}
 		}
 	}
 
@@ -334,7 +368,7 @@ func (sd *StreamDeck) FillImage(btnIndex int, img image.Image) error {
 		return err
 	}
 
-	imgBuf := makeBitmap(img)
+	imgBuf := makeBitmap(img, 270)
 
 	sd.Lock()
 	defer sd.Unlock()
@@ -472,7 +506,7 @@ func (sd *StreamDeck) writeBitmap(key uint8, buf []byte) error {
 	out := make([]byte, 1024)
 	out[0] = 0x02
 	out[1] = 0x01
-	out[5] = key+1
+	out[5] = key + 1
 
 	page_no := uint8(0)
 
