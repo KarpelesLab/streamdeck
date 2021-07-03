@@ -472,6 +472,33 @@ func (sd *StreamDeck) SetBrightness(pc uint8) error {
 	return sd.device.SetFeatureReport(0, payload)
 }
 
+func (sd *StreamDeck) GetFirmwareVersion() (string, error) {
+	// check firmware version
+	fwVer, err := sd.device.GetFeatureReport(4)
+	if err != nil {
+		return "", err
+	}
+
+	fwVer = fwVer[5:] // first 5 bytes are: 04 00 00 00 00
+	if pos := bytes.IndexByte(fwVer, 0); pos >= 0 {
+		fwVer = fwVer[:pos]
+	}
+	return string(fwVer), nil
+}
+
+func (sd *StreamDeck) GetSerialNumber() (string, error) {
+	serialNo, err := sd.device.GetFeatureReport(3)
+	if err != nil {
+		return "", err
+	}
+
+	serialNo = serialNo[5:] // first 5 bytes are: 03 00 00 00 00
+	if pos := bytes.IndexByte(serialNo, 0); pos >= 0 {
+		serialNo = serialNo[:pos]
+	}
+	return string(serialNo), nil
+}
+
 func (sd *StreamDeck) writeBitmap(key uint8, buf []byte) error {
 	// write buf through interrupt, limit to 1024 bytes each time
 	out := make([]byte, 1024)
