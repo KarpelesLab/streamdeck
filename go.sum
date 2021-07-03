@@ -2,6 +2,8 @@ github.com/KarpelesLab/hid v0.0.1 h1:8Iyo2UP3hFaXzfk6Q/AC2lS9C2/4K3xr44EmHAriGK4
 github.com/KarpelesLab/hid v0.0.1/go.mod h1:AQmidlnvRgFwFyHsiQdtCnqBYJzruab7YiHOSIzRgMI=
 github.com/KarpelesLab/hid v0.0.2 h1:ptEGqVcgqIXdoUhwitAfD6XO42cPllZJoMJ31zqjbG8=
 github.com/KarpelesLab/hid v0.0.2/go.mod h1:AQmidlnvRgFwFyHsiQdtCnqBYJzruab7YiHOSIzRgMI=
+github.com/KarpelesLab/hid v0.1.0 h1:TQodVh83+piiiJbuoy8d1w2DFjkI3KS/8Efj0V05ur0=
+github.com/KarpelesLab/hid v0.1.0/go.mod h1:AQmidlnvRgFwFyHsiQdtCnqBYJzruab7YiHOSIzRgMI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e h1:fY5BOSpyZCqRo5OhCuC+XN+r/bBCmeuuJtjz+bCNIf8=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/dh1tw/hid v1.0.1-0.20190713013040-4404f3fb150e h1:fNI5M7e7lRCiPrtN+5QVRJh8hSZMdzO3vDP1elBwdPs=

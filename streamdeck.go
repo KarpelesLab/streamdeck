@@ -1,6 +1,6 @@
 //go:generate stringer -type=BtnState
 
-package StreamDeck
+package streamdeck
 
 import (
 	"bytes"
@@ -28,20 +28,8 @@ import (
 // VendorID is the USB VendorID assigned to Elgato (0x0fd9)
 const VendorID = 4057
 
-// ProductID is the USB ProductID assigned to Elgato's Stream Deck (0x0060)
-const ProductID = 96
-const StreamDeck6 = 99
-
 // NumButtons is the total amount of Buttons located on the Stream Deck.
 const NumButtons = 15
-
-// numFirstMsgPixels is the amount of pixels which have to be sent to the
-// Stream Deck in the first message.
-const numFirstMsgPixels = 2583
-
-// numSecondMsgPixels is the amount of pixels which have to be send to the
-// Stream Deck in the second message.
-const numSecondMsgPixels = 2601
 
 // ButtonSize is the size of a button (in pixel).
 const ButtonSize = 80
@@ -82,10 +70,10 @@ type ReadErrorCb func(err error)
 // StreamDeck is the object representing the Elgato Stream Deck.
 type StreamDeck struct {
 	sync.Mutex
-	device     hid.Device
+	device     hid.Handle
 	btnEventCb BtnEvent
 	btnState   []BtnState
-	product    uint16
+	info       *StreamdeckDevice
 }
 
 // TextButton holds the lines to be written to a button and the desired
@@ -132,12 +120,17 @@ func NewStreamDeck(serial ...string) (*StreamDeck, error) {
 		if info.Vendor != VendorID {
 			return
 		}
-		switch info.Product {
-		case ProductID:
-			devices = append(devices, device)
-		case StreamDeck6:
-			devices = append(devices, device)
-		default:
+
+		found := false
+		for _, sd := range streamdeckDevices {
+			if sd.ProductID == info.Product {
+				// found device
+				devices = append(devices, device)
+				found = true
+				break
+			}
+		}
+		if !found {
 			log.Printf("WARNING: unsupported Elgato device %04x:%04x:%04x:%02x", info.Vendor, info.Product, info.Revision, info.Interface)
 		}
 	})
@@ -162,17 +155,23 @@ func NewStreamDeck(serial ...string) (*StreamDeck, error) {
 			}
 		}*/
 
-	err := devices[id].Open()
+	handle, err := devices[id].Open()
 	if err != nil {
 		return nil, err
 	}
 
 	info := devices[id].Info()
+	var sdinfo *StreamdeckDevice
+	for _, sdinfo = range streamdeckDevices {
+		if sdinfo.ProductID == info.Product {
+			break
+		}
+	}
 
 	sd := &StreamDeck{
-		device:   devices[id],
+		device:   handle,
 		btnState: make([]BtnState, NumButtons),
-		product:  info.Product,
+		info:     sdinfo,
 	}
 
 	// initialize buttons to state BtnReleased
@@ -259,14 +258,7 @@ func (sd *StreamDeck) ClearAllBtns() {
 }
 
 func (sd *StreamDeck) ButtonCount() int {
-	switch sd.product {
-	case ProductID:
-		return 15
-	case StreamDeck6:
-		return 6
-	default:
-		panic("unrecognized device")
-	}
+	return sd.info.NumButtons
 }
 
 // FillColor fills the given button with a solid color.
