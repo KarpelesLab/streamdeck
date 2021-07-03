@@ -209,12 +209,19 @@ func (sd *StreamDeck) read() {
 			continue
 		}
 
+		if data[0] != 1 {
+			continue
+		}
+
 		data = data[1:] // strip off the first byte; usage unknown, but it is always '\x01'
 
 		sd.Lock()
 		// we have to iterate over all 15 buttons and check if the state
 		// has changed. If it has changed, execute the callback.
 		for i, b := range data {
+			if i >= len(sd.btnState) {
+				break
+			}
 			if sd.btnState[i] != itob(int(b)) {
 				sd.btnState[i] = itob(int(b))
 				if sd.btnEventCb != nil {
@@ -236,7 +243,7 @@ func (sd *StreamDeck) Close() error {
 
 // ClearBtn fills a particular key with the color black
 func (sd *StreamDeck) ClearBtn(btnIndex int) error {
-	log.Printf("about to clear button %d", btnIndex)
+	//log.Printf("about to clear button %d", btnIndex)
 
 	if err := checkValidKeyIndex(btnIndex); err != nil {
 		return err
@@ -465,11 +472,11 @@ func (sd *StreamDeck) writeBitmap(key uint8, buf []byte) error {
 	out := make([]byte, 1024)
 	out[0] = 0x02
 	out[1] = 0x01
-	out[5] = key
+	out[5] = key+1
 
 	page_no := uint8(0)
 
-	log.Printf("about to write %d bytes of data...", len(buf))
+	//log.Printf("about to write %d bytes of data...", len(buf))
 
 	for {
 		out[2] = page_no
@@ -488,7 +495,7 @@ func (sd *StreamDeck) writeBitmap(key uint8, buf []byte) error {
 		if err != nil {
 			panic(fmt.Sprintf("failed to setreport: %s", err))
 		}
-		log.Printf("wrote %d bytes, remaining %d", len(out), len(buf))
+		//log.Printf("wrote %d bytes, remaining %d", len(out), len(buf))
 
 		if len(buf) == 0 {
 			return nil
