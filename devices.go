@@ -32,6 +32,16 @@ var streamdeckDevices = []*StreamdeckDevice{
 		NumButtonColumns: 3,
 		NumButtonRows:    2,
 	},
+	&StreamdeckDevice{
+		ProductID:        0x0090, // mini mk2
+		Name:             "Stream Deck Mini",
+		NumButtons:       6, // 3x2
+		ButtonSize:       80,
+		StreamBuffer:     1024,
+		Spacer:           19, // ?? is this value event relevant?
+		NumButtonColumns: 3,
+		NumButtonRows:    2,
+	},
 }
 
 func (dev *StreamdeckDevice) PanelWidth() int {

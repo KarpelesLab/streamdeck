@@ -63,12 +63,12 @@ func (l *Label) Draw() error {
 }
 
 // SetText sets the text of the Label.
-func (l *Label) SetText(text string) {
+func (l *Label) SetText(text string) error {
 	l.text = text
 }
 
 // SetBgColor sets the background color of the Label.
-func (l *Label) SetBgColor(color *image.Uniform) {
+func (l *Label) SetBgColor(color *image.Uniform) error {
 	l.bgColor = color
 }
 
