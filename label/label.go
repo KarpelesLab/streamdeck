@@ -65,11 +65,13 @@ func (l *Label) Draw() error {
 // SetText sets the text of the Label.
 func (l *Label) SetText(text string) error {
 	l.text = text
+	return nil
 }
 
 // SetBgColor sets the background color of the Label.
 func (l *Label) SetBgColor(color *image.Uniform) error {
 	l.bgColor = color
+	return nil
 }
 
 func (l *Label) addBgColor(col color.Color, img *image.RGBA) {
